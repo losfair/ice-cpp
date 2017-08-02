@@ -8,6 +8,7 @@
 #include <deque>
 #include <sstream>
 #include <stdexcept>
+#include <string.h>
 #include <unistd.h>
 #include <uv.h>
 #include <libgccjit.h>
@@ -18,17 +19,49 @@ namespace ice {
 class Request;
 static void dispatch_task(uv_async_t *task_async);
 
-typedef std::function<void(Request *)> DispatchTarget;
+typedef std::function<void(Request)> DispatchTarget;
 typedef std::function<void()> Task;
+
+class Response {
+    public:
+        Resource call_info;
+        Resource handle;
+
+        Response(Resource _call_info) {
+            call_info = _call_info;
+            handle = ice_glue_create_response();
+        }
+
+        Response& set_body(const u8 *body, u32 len) {
+            ice_glue_response_set_body(handle, body, len);
+            return *this;
+        }
+        
+        Response& set_body(const char *body) {
+            return set_body((const u8 *) body, strlen(body));
+        }
+
+        Response& set_body(const std::string& body) {
+            return set_body((const u8 *) body.c_str(), body.size());
+        }
+
+        void send() {
+            ice_core_fire_callback(call_info, handle);
+        }
+};
 
 class Request {
     public:
-        Resource handle;
         Resource call_info;
+        Resource handle;
 
         Request(Resource _call_info) {
             call_info = _call_info;
             handle = ice_core_borrow_request_from_call_info(call_info);
+        }
+
+        Response create_response() {
+            return Response(call_info);
         }
 };
 
@@ -75,6 +108,14 @@ class Server {
             int id = ice_core_endpoint_get_id(ep);
 
             dispatch_table[id] = handler;
+        }
+
+        void add_endpoint(const char *path, DispatchTarget handler) {
+            add_endpoint(path, handler, std::vector<std::string>());
+        }
+
+        void disable_request_logging() {
+            ice_server_disable_request_logging(handle);
         }
 
         static void dispatch_async_endpoint_cb(Server *server, int ep_id, Resource call_info) {
@@ -156,12 +197,14 @@ class Server {
         }
 
         void async_endpoint_cb(int ep_id, Resource call_info) {
+            Request req(call_info);
+
             auto target = dispatch_table[ep_id];
             if(!target) {
-                std::cerr << "Error: Calling an invalid endpoint: " << ep_id << std::endl;
+                //std::cerr << "Error: Calling an invalid endpoint: " << ep_id << std::endl;
+                req.create_response().set_body("Invalid endpoint").send();
                 return;
             }
-            Request *req = new Request(call_info);
 
             pending_mutex.lock();
             pending.push_back([=]() {
