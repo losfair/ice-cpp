@@ -45,6 +45,11 @@ class Response {
             return set_body((const u8 *) body.c_str(), body.size());
         }
 
+        Response& set_status(u16 status) {
+            ice_glue_response_set_status(handle, status);
+            return *this;
+        }
+
         void send() {
             ice_core_fire_callback(call_info, handle);
         }
@@ -202,7 +207,7 @@ class Server {
             auto target = dispatch_table[ep_id];
             if(!target) {
                 //std::cerr << "Error: Calling an invalid endpoint: " << ep_id << std::endl;
-                req.create_response().set_body("Invalid endpoint").send();
+                req.create_response().set_status(404).set_body("Invalid endpoint").send();
                 return;
             }
 
