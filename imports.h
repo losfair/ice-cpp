@@ -22,12 +22,13 @@ extern "C" {
     void ice_server_disable_request_logging(Resource handle);
     void ice_server_set_async_endpoint_cb(Resource handle, AsyncEndpointHandler cb);
     void ice_server_set_endpoint_timeout_ms(Resource handle, u64 t);
+    void ice_server_set_custom_app_data(Resource handle, Resource data);
+    
+    void ice_context_set_custom_app_data(Resource handle, Resource data);
 
     const char * ice_glue_request_get_remote_addr(Resource req);
     const char * ice_glue_request_get_method(Resource req);
     const char * ice_glue_request_get_uri(Resource req);
-    bool ice_glue_request_load_session(Resource req, const char *id);
-    void ice_glue_request_create_session(Resource req);
     const char * ice_glue_request_get_session_id(Resource req);
     const char * ice_glue_request_get_session_item(Resource req, const char *k);
     void ice_glue_request_set_session_item(Resource req, const char *k, const char *v);
@@ -56,6 +57,7 @@ extern "C" {
 
     bool ice_core_fire_callback(Resource call_info, Resource resp);
     Resource ice_core_borrow_request_from_call_info(Resource call_info);
+    Resource ice_core_get_custom_app_data_from_call_info(Resource call_info);
     int ice_core_endpoint_get_id(Resource ep);
     void ice_core_endpoint_set_flag(Resource ep, const char *name, bool value);
     void ice_core_stream_provider_send_chunk(Resource sp, const u8 *data, u32 len);

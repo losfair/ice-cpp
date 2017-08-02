@@ -11,15 +11,16 @@
 #include <string.h>
 #include <unistd.h>
 #include <uv.h>
-#include <libgccjit.h>
 #include "imports.h"
 
 namespace ice {
 
 class Request;
+class Response;
 static void dispatch_task(uv_async_t *task_async);
 
 typedef std::function<void(Request)> DispatchTarget;
+typedef std::function<Response(Request)> SyncDispatchTarget;
 typedef std::function<void()> Task;
 
 class Response {
@@ -68,6 +69,18 @@ class Request {
         Response create_response() {
             return Response(call_info);
         }
+
+        const char * get_remote_addr() {
+            return ice_glue_request_get_remote_addr(handle);
+        }
+
+        const char * get_method() {
+            return ice_glue_request_get_method(handle);
+        }
+
+        const char * get_uri() {
+            return ice_glue_request_get_uri(handle);
+        }
 };
 
 class Server {
@@ -79,7 +92,6 @@ class Server {
         std::mutex pending_mutex;
         std::deque<Task> pending;
         std::string async_endpoint_cb_signature;
-        AsyncEndpointHandler target_async_endpoint_cb;
 
         Server(uv_loop_t *loop) {
             handle = ice_create_server();
@@ -91,11 +103,8 @@ class Server {
             uv_async_init(ev_loop, &task_async, ice::dispatch_task);
             task_async.data = (void *) this;
 
-            std::stringstream ss;
-            ss << "async_endpoint_cb_" << this;
-            ss >> async_endpoint_cb_signature;
-
-            target_async_endpoint_cb = NULL;
+            ice_server_set_custom_app_data(handle, (void *) this);
+            ice_server_set_async_endpoint_cb(handle, dispatch_async_endpoint_cb);
         }
 
         ~Server() {}
@@ -104,7 +113,7 @@ class Server {
             ice_server_listen(handle, addr);
         }
 
-        void add_endpoint(const char *path, DispatchTarget handler, std::vector<std::string> flags) {
+        void add_endpoint(const char *path, DispatchTarget handler, std::vector<std::string>& flags) {
             Resource ep = ice_server_router_add_endpoint(handle, path);
             for(auto& f : flags) {
                 ice_core_endpoint_set_flag(ep, f.c_str(), true);
@@ -116,89 +125,53 @@ class Server {
         }
 
         void add_endpoint(const char *path, DispatchTarget handler) {
-            add_endpoint(path, handler, std::vector<std::string>());
+            std::vector<std::string> flags;
+            add_endpoint(path, handler, flags);
+        }
+
+        void route_sync(const char *path, SyncDispatchTarget handler, std::vector<std::string>& flags) {
+            add_endpoint(path, [=](Request req) {
+                Response resp = handler(req);
+                resp.send();
+            }, flags);
+        }
+
+        void route_sync(const char *path, SyncDispatchTarget handler) {
+            std::vector<std::string> flags;
+            route_sync(path, handler, flags);
+        }
+
+        void route_async(const char *path, DispatchTarget handler, std::vector<std::string>& flags) {
+            add_endpoint(path, handler, flags);
+        }
+
+        void route_async(const char *path, DispatchTarget handler) {
+            std::vector<std::string> flags;
+            route_async(path, handler, flags);
+        }
+
+        void route_threaded(const char *path, SyncDispatchTarget handler, std::vector<std::string>& flags) {
+            add_endpoint(path, [=](Request req) {
+                std::thread t([=]() {
+                    Response resp = handler(req);
+                    resp.send();
+                });
+                t.detach();
+            }, flags);
+        }
+        
+        void route_threaded(const char *path, SyncDispatchTarget handler) {
+            std::vector<std::string> flags;
+            route_threaded(path, handler, flags);
         }
 
         void disable_request_logging() {
             ice_server_disable_request_logging(handle);
         }
 
-        static void dispatch_async_endpoint_cb(Server *server, int ep_id, Resource call_info) {
+        static void dispatch_async_endpoint_cb(int ep_id, Resource call_info) {
+            Server *server = (Server *) ice_core_get_custom_app_data_from_call_info(call_info);
             server -> async_endpoint_cb(ep_id, call_info);
-        }
-
-        AsyncEndpointHandler leaky_generate_async_endpoint_cb() {
-            gcc_jit_context *ctx = gcc_jit_context_acquire();
-            if(!ctx) throw std::runtime_error("Unable to get JIT context");
-
-            gcc_jit_type *void_type = gcc_jit_context_get_type(ctx, GCC_JIT_TYPE_VOID);
-            gcc_jit_type *int_type = gcc_jit_context_get_type(ctx, GCC_JIT_TYPE_INT);
-            gcc_jit_type *void_ptr_type = gcc_jit_context_get_type(ctx, GCC_JIT_TYPE_VOID_PTR);
-
-            gcc_jit_param *ep_id_param = gcc_jit_context_new_param(ctx, NULL, int_type, "ep_id");
-            gcc_jit_param *call_info_param = gcc_jit_context_new_param(ctx, NULL, void_ptr_type, "call_info");
-
-            gcc_jit_param *params[] = {
-                ep_id_param,
-                call_info_param
-            };
-
-            gcc_jit_function *func = gcc_jit_context_new_function(
-                ctx,
-                NULL,
-                GCC_JIT_FUNCTION_EXPORTED,
-                void_type,
-                this -> async_endpoint_cb_signature.c_str(),
-                2,
-                params,
-                0
-            );
-
-            gcc_jit_rvalue *args[3];
-            args[0] = gcc_jit_context_new_rvalue_from_ptr(ctx, void_ptr_type, (void *) this);
-            args[1] = gcc_jit_param_as_rvalue(ep_id_param);
-            args[2] = gcc_jit_param_as_rvalue(call_info_param);
-
-            gcc_jit_type *target_param_types[] = {
-                void_ptr_type,
-                int_type,
-                void_ptr_type
-            };
-            
-            gcc_jit_rvalue *target_dispatcher = gcc_jit_context_new_rvalue_from_ptr(
-                ctx,
-                gcc_jit_context_new_function_ptr_type(
-                    ctx,
-                    NULL,
-                    void_type,
-                    3,
-                    target_param_types,
-                    0
-                ),
-                (void *) Server::dispatch_async_endpoint_cb
-            );
-
-            gcc_jit_block *function_block = gcc_jit_function_new_block(func, NULL);
-            gcc_jit_block_add_eval(
-                function_block,
-                NULL,
-                gcc_jit_context_new_call_through_ptr(
-                    ctx,
-                    NULL,
-                    target_dispatcher,
-                    3,
-                    args
-                )
-            );
-            gcc_jit_block_end_with_void_return(function_block, NULL);
-
-            gcc_jit_result *result = gcc_jit_context_compile(ctx); // This leaks
-            if(!result) throw std::runtime_error("Unable to do JIT compile");
-
-            AsyncEndpointHandler generated_cb = (AsyncEndpointHandler) gcc_jit_result_get_code(result, this -> async_endpoint_cb_signature.c_str());
-            gcc_jit_context_release(ctx);
-
-            return generated_cb;
         }
 
         void async_endpoint_cb(int ep_id, Resource call_info) {
@@ -220,9 +193,6 @@ class Server {
         }
 
         void run(const char *addr) {
-            target_async_endpoint_cb = leaky_generate_async_endpoint_cb();
-            ice_server_set_async_endpoint_cb(handle, target_async_endpoint_cb);
-            
             listen(addr);
             uv_run(ev_loop, UV_RUN_DEFAULT);
         }
