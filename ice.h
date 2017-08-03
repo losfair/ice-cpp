@@ -21,7 +21,52 @@ static void dispatch_task(uv_async_t *task_async);
 
 typedef std::function<void(Request)> DispatchTarget;
 typedef std::function<Response(Request)> SyncDispatchTarget;
-typedef std::function<void()> Task;
+
+std::unordered_map<std::string, const char *> read_map(const u8 *raw) {
+    const u8 *p = raw;
+    char type_buf[64];
+
+    u16 type_len = * (u16 *) p;
+    p += 2;
+
+    memcpy(type_buf, p, type_len);
+    p += type_len;
+
+    type_buf[type_len] = 0;
+    if(strcmp(type_buf, "map") != 0) {
+        throw std::runtime_error("Data is not a map");
+    }
+
+    u32 item_count = * (u32 *) p;
+    p += 4;
+
+    std::unordered_map<std::string, const char *> ret;
+    for(u32 i = 0; i < item_count; i++) {
+        u32 k_len = * (u32 *) p;
+        p += 4;
+        const char *k = (const char *) p;
+        p += k_len + 1;
+
+        u32 v_len = * (u32 *) p;
+        p += 4;
+        const char *v = (const char *) p;
+        p += v_len + 1;
+
+        ret[std::string(k)] = v;
+    }
+
+    return ret;
+}
+
+struct Task {
+    int ep_id;
+    Resource call_info;
+
+    Task(int _ep_id, Resource _call_info) {
+        ep_id = _ep_id;
+        call_info = _call_info;
+    }
+};
 
 class Response {
     public:
@@ -80,6 +125,14 @@ class Request {
 
         const char * get_uri() {
             return ice_glue_request_get_uri(handle);
+        }
+
+        std::unordered_map<std::string, const char *> get_headers() {
+            return read_map(ice_glue_request_get_headers(handle));
+        }
+
+        std::unordered_map<std::string, const char *> get_cookies() {
+            return read_map(ice_glue_request_get_cookies(handle));
         }
 };
 
@@ -175,20 +228,10 @@ class Server {
         }
 
         void async_endpoint_cb(int ep_id, Resource call_info) {
-            Request req(call_info);
-
-            auto target = dispatch_table[ep_id];
-            if(!target) {
-                //std::cerr << "Error: Calling an invalid endpoint: " << ep_id << std::endl;
-                req.create_response().set_status(404).set_body("Invalid endpoint").send();
-                return;
-            }
-
             pending_mutex.lock();
-            pending.push_back([=]() {
-                target(req);
-            });
+            pending.push_back(Task(ep_id, call_info));
             pending_mutex.unlock();
+
             uv_async_send(&task_async);
         }
 
@@ -199,12 +242,21 @@ class Server {
 
         void dispatch_task() {
             pending_mutex.lock();
-            std::deque<Task> current_tasks = pending;
-            pending.clear();
+            std::deque<Task> current_tasks = std::move(pending);
+            pending = std::deque<Task>();
             pending_mutex.unlock();
 
             for(auto& t : current_tasks) {
-                t();
+                Request req(t.call_info);
+
+                auto target = dispatch_table[t.ep_id];
+                if(!target) {
+                    //std::cerr << "Error: Calling an invalid endpoint: " << ep_id << std::endl;
+                    req.create_response().set_status(404).set_body("Invalid endpoint").send();
+                    continue;
+                }
+
+                target(req);
             }
         }
 };

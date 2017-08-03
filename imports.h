@@ -36,7 +36,9 @@ extern "C" {
     void ice_glue_request_set_custom_stat(Resource req, const char *k, const char *v);
     void ice_glue_request_add_header(Resource t, const char *k, const char *v);
     const char * ice_glue_request_get_header(Resource t, const char *k);
+    const u8 * ice_glue_request_get_headers(Resource t);
     const char * ice_glue_request_get_cookie(Resource t, const char *k);
+    const u8 * ice_glue_request_get_cookies(Resource t);
     const u8 * ice_glue_request_get_body(Resource t, u32 *len_out);
     char * ice_glue_request_render_template_to_owned(Resource t, const char *name, const char *data);
     Resource ice_glue_request_borrow_context(Resource t);
