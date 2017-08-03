@@ -22,7 +22,7 @@ static void dispatch_task(uv_async_t *task_async);
 typedef std::function<void(Request)> DispatchTarget;
 typedef std::function<Response(Request)> SyncDispatchTarget;
 
-std::unordered_map<std::string, const char *> read_map(const u8 *raw) {
+static std::unordered_map<std::string, const char *> read_map(const u8 *raw) {
     if(!raw) {
         return std::unordered_map<std::string, const char *>();
     }
@@ -38,7 +38,8 @@ std::unordered_map<std::string, const char *> read_map(const u8 *raw) {
 
     type_buf[type_len] = 0;
     if(strcmp(type_buf, "map") != 0) {
-        throw std::runtime_error("Data is not a map");
+        //throw std::runtime_error("Data is not a map");
+        return std::unordered_map<std::string, const char *>();
     }
 
     u32 item_count = * (u32 *) p;
@@ -73,43 +74,68 @@ struct Task {
 };
 
 class Response {
-    public:
+    private:
         Resource call_info;
         Resource handle;
 
+    public:
         Response(Resource _call_info) {
             call_info = _call_info;
             handle = ice_glue_create_response();
         }
 
-        Response& set_body(const u8 *body, u32 len) {
+        inline Response& set_body(const u8 *body, u32 len) {
             ice_glue_response_set_body(handle, body, len);
             return *this;
         }
         
-        Response& set_body(const char *body) {
+        inline Response& set_body(const char *body) {
             return set_body((const u8 *) body, strlen(body));
         }
 
-        Response& set_body(const std::string& body) {
+        inline Response& set_body(const std::string& body) {
             return set_body((const u8 *) body.c_str(), body.size());
         }
 
-        Response& set_status(u16 status) {
+        inline Response& set_file(const char *path) {
+            ice_glue_response_set_file(handle, path);
+            return *this;
+        }
+
+        inline Response& set_status(u16 status) {
             ice_glue_response_set_status(handle, status);
             return *this;
         }
 
-        void send() {
+        inline Response& add_header(const char *k, const char *v) {
+            ice_glue_response_add_header(handle, k, v);
+            return *this;
+        }
+
+        inline Response& set_header(const char *k, const char *v) {
+            return add_header(k, v);
+        }
+
+        inline Response& set_cookie(const char *k, const char *v) {
+            ice_glue_response_set_cookie(handle, k, v);
+            return *this;
+        }
+
+        inline void send() {
             ice_core_fire_callback(call_info, handle);
+        }
+
+        inline bool _consume_rendered_template(char *output) {
+            return ice_glue_response_consume_rendered_template(handle, output);
         }
 };
 
 class Request {
-    public:
+    private:
         Resource call_info;
         Resource handle;
 
+    public:
         Request(Resource _call_info) {
             call_info = _call_info;
             handle = ice_core_borrow_request_from_call_info(call_info);
@@ -119,27 +145,47 @@ class Request {
             return Response(call_info);
         }
 
-        const char * get_remote_addr() {
+        inline const char * get_remote_addr() {
             return ice_glue_request_get_remote_addr(handle);
         }
 
-        const char * get_method() {
+        inline const char * get_method() {
             return ice_glue_request_get_method(handle);
         }
 
-        const char * get_uri() {
+        inline const char * get_uri() {
             return ice_glue_request_get_uri(handle);
         }
 
-        std::unordered_map<std::string, const char *> get_headers() {
+        inline const char * get_session_item(const char *k) {
+            return ice_glue_request_get_session_item(handle, k);
+        }
+
+        inline const char * get_stats() {
+            return ice_glue_request_get_stats(handle);
+        }
+
+        inline const char * get_header(const char *k) {
+            return ice_glue_request_get_header(handle, k);
+        }
+
+        inline const char * get_cookie(const char *k) {
+            return ice_glue_request_get_cookie(handle, k);
+        }
+
+        inline const u8 * get_body(u32 *len_out) {
+            return ice_glue_request_get_body(handle, len_out);
+        }
+
+        inline std::unordered_map<std::string, const char *> get_headers() {
             return read_map(ice_glue_request_get_headers(handle));
         }
 
-        std::unordered_map<std::string, const char *> get_cookies() {
+        inline std::unordered_map<std::string, const char *> get_cookies() {
             return read_map(ice_glue_request_get_cookies(handle));
         }
 
-        std::unordered_map<std::string, std::string> get_session_items() {
+        inline std::unordered_map<std::string, std::string> get_session_items() {
             auto m = read_map(ice_glue_request_get_session_items(handle));
             std::unordered_map<std::string, std::string> ret;
             for(auto& p : m) {
@@ -149,13 +195,25 @@ class Request {
             return ret;
         }
 
-        void set_session_item(const char *k, const char *v) {
+        inline void set_session_item(const char *k, const char *v) {
             ice_glue_request_set_session_item(handle, k, v);
+        }
+
+        inline void set_custom_stat(const char *k, const char *v) {
+            ice_glue_request_set_custom_stat(handle, k, v);
+        }
+
+        inline bool render_template(Response& resp, const char *name, const char *data) {
+            char *r = ice_glue_request_render_template_to_owned(handle, name, data);
+            if(!r) {
+                return false;
+            }
+            return resp._consume_rendered_template(r);
         }
 };
 
 class Server {
-    public:
+    private:
         Resource handle;
         uv_loop_t *ev_loop;
         uv_async_t task_async;
@@ -164,6 +222,7 @@ class Server {
         std::deque<Task> pending;
         std::string async_endpoint_cb_signature;
 
+    public:
         Server(uv_loop_t *loop) {
             handle = ice_create_server();
             if(loop) {
@@ -238,6 +297,26 @@ class Server {
 
         void disable_request_logging() {
             ice_server_disable_request_logging(handle);
+        }
+
+        void set_session_cookie_name(const char *name) {
+            ice_server_set_session_cookie_name(handle, name);
+        }
+
+        void set_session_timeout_ms(u64 t) {
+            ice_server_set_session_timeout_ms(handle, t);
+        }
+
+        void add_template(const char *name, const char *content) {
+            ice_server_add_template(handle, name, content);
+        }
+        
+        void set_max_request_body_size(u32 size) {
+            ice_server_set_max_request_body_size(handle, size);
+        }
+
+        void set_endpoint_timeout_ms(u64 t) {
+            ice_server_set_endpoint_timeout_ms(handle, t);
         }
 
         static void dispatch_async_endpoint_cb(int ep_id, Resource call_info) {
