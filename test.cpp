@@ -2,6 +2,7 @@
 #include <string>
 #include <vector>
 #include <sstream>
+#include <thread>
 #include <time.h>
 #include "ice.h"
 
@@ -61,6 +62,18 @@ int main() {
 
         return req.create_response().set_body("OK");
     }, session_route_flags);
+
+    server.route_async("/stream", [](ice::Request req) {
+        auto ctx = req.get_context();
+        auto resp = req.create_response();
+        auto stream = resp.stream(ctx);
+        resp.send();
+
+        std::thread t([stream = std::move(stream)]() {
+            stream.write("Hello world! (Stream)");
+        });
+        t.detach();
+    });
 
     server.run("127.0.0.1:4121");
     return 0;

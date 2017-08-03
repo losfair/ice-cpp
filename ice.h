@@ -73,6 +73,66 @@ struct Task {
     }
 };
 
+class ResponseStream {
+    private:
+        Resource handle;
+
+    public:
+        ResponseStream(Resource _handle) {
+            handle = _handle;
+        }
+
+        ResponseStream(ResponseStream&& from) {
+            handle = from._move_handle();
+        }
+
+        ~ResponseStream() {
+            if(handle) {
+                ice_core_destroy_stream_provider(handle);
+            }
+        }
+
+        ResponseStream& operator = (ResponseStream&& from) {
+            if(this != &from) {
+                if(handle) {
+                    ice_core_destroy_stream_provider(handle);
+                }
+                handle = from._move_handle();
+            }
+            return *this;
+        }
+
+        Resource _move_handle() {
+            Resource _handle = handle;
+            handle = NULL;
+            return _handle;
+        }
+
+        bool write(const u8 *data, u32 len) const {
+            if(!this -> handle) return false;
+            ice_core_stream_provider_send_chunk(handle, data, len);
+            return true;
+        }
+
+        bool write(const char *s) const {
+            return write((const u8 *) s, strlen(s));
+        }
+};
+
+class Context {
+    private:
+        Resource handle;
+    
+    public:
+        Context(Resource _handle) {
+            handle = _handle;
+        }
+
+        Resource _get_handle() {
+            return handle;
+        }
+};
+
 class Response {
     private:
         Resource call_info;
@@ -121,6 +181,10 @@ class Response {
             return *this;
         }
 
+        inline ResponseStream stream(Context& ctx) {
+            return ResponseStream(ice_glue_response_stream(handle, ctx._get_handle()));
+        }
+
         inline void send() {
             ice_core_fire_callback(call_info, handle);
         }
@@ -143,6 +207,10 @@ class Request {
 
         Response create_response() {
             return Response(call_info);
+        }
+
+        inline Context get_context() {
+            return Context(ice_glue_request_borrow_context(handle));
         }
 
         inline const char * get_remote_addr() {
