@@ -23,6 +23,10 @@ typedef std::function<void(Request)> DispatchTarget;
 typedef std::function<Response(Request)> SyncDispatchTarget;
 
 std::unordered_map<std::string, const char *> read_map(const u8 *raw) {
+    if(!raw) {
+        return std::unordered_map<std::string, const char *>();
+    }
+
     const u8 *p = raw;
     char type_buf[64];
 
@@ -133,6 +137,20 @@ class Request {
 
         std::unordered_map<std::string, const char *> get_cookies() {
             return read_map(ice_glue_request_get_cookies(handle));
+        }
+
+        std::unordered_map<std::string, std::string> get_session_items() {
+            auto m = read_map(ice_glue_request_get_session_items(handle));
+            std::unordered_map<std::string, std::string> ret;
+            for(auto& p : m) {
+                // Raw data may become invalid.
+                if(p.second) ret[std::move(p.first)] = std::string(p.second);
+            }
+            return ret;
+        }
+
+        void set_session_item(const char *k, const char *v) {
+            ice_glue_request_set_session_item(handle, k, v);
         }
 };
 

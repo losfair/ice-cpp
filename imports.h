@@ -31,6 +31,7 @@ extern "C" {
     const char * ice_glue_request_get_uri(Resource req);
     const char * ice_glue_request_get_session_id(Resource req);
     const char * ice_glue_request_get_session_item(Resource req, const char *k);
+    const u8 * ice_glue_request_get_session_items(Resource req);
     void ice_glue_request_set_session_item(Resource req, const char *k, const char *v);
     const char * ice_glue_request_get_stats(Resource req);
     void ice_glue_request_set_custom_stat(Resource req, const char *k, const char *v);

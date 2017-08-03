@@ -1,5 +1,8 @@
 #include <iostream>
 #include <string>
+#include <vector>
+#include <sstream>
+#include <time.h>
 #include "ice.h"
 
 int main() {
@@ -37,6 +40,28 @@ int main() {
 
         return req.create_response().set_body("OK");
     });
+
+    std::vector<std::string> session_route_flags;
+    session_route_flags.push_back(std::string("init_session"));
+
+    server.route_sync("/session", [](ice::Request req) {
+        auto session_items = req.get_session_items();
+
+        std::cout << "Session items: " << std::endl;
+        for(auto& p : session_items) {
+            std::cout << p.first << ": " << p.second << std::endl;
+        }
+
+        std::stringstream ss;
+        ss << clock();
+        
+        std::string t;
+        ss >> t;
+        req.set_session_item("clock", t.c_str());
+
+        return req.create_response().set_body("OK");
+    }, session_route_flags);
+
     server.run("127.0.0.1:4121");
     return 0;
 }
