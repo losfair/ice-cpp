@@ -312,12 +312,16 @@ class Server {
         }
 
         void add_endpoint(const char *path, DispatchTarget handler, std::vector<std::string>& flags) {
-            Resource ep = ice_server_router_add_endpoint(handle, path);
-            for(auto& f : flags) {
-                ice_core_endpoint_set_flag(ep, f.c_str(), true);
-            }
+            int id = -1;
 
-            int id = ice_core_endpoint_get_id(ep);
+            if(path && path[0]) {
+                Resource ep = ice_server_router_add_endpoint(handle, path);
+                for(auto& f : flags) {
+                    ice_core_endpoint_set_flag(ep, f.c_str(), true);
+                }
+
+                id = ice_core_endpoint_get_id(ep);
+            }
 
             dispatch_table[id] = handler;
         }

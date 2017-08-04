@@ -10,6 +10,10 @@ int main() {
     ice::Server server(NULL);
     server.disable_request_logging();
 
+    server.route_sync(NULL, [](ice::Request req) {
+        return req.create_response().set_status(404).set_body("Not found");
+    });
+
     server.route_sync("/hello_world", [](ice::Request req) {
         auto resp = req.create_response();
         resp.set_body("Hello world!");
