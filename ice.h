@@ -1,3 +1,6 @@
+#ifndef _ICE_H_
+#define _ICE_H_
+
 #include <iostream>
 #include <thread>
 #include <vector>
@@ -276,7 +279,8 @@ class Request {
             if(!r) {
                 return false;
             }
-            return resp._consume_rendered_template(r);
+            resp._consume_rendered_template(r);
+            return true;
         }
 };
 
@@ -379,8 +383,8 @@ class Server {
             ice_server_set_session_timeout_ms(handle, t);
         }
 
-        void add_template(const char *name, const char *content) {
-            ice_server_add_template(handle, name, content);
+        bool add_template(const char *name, const char *content) {
+            return ice_server_add_template(handle, name, content);
         }
         
         void set_max_request_body_size(u32 size) {
@@ -436,3 +440,5 @@ static void dispatch_task(uv_async_t *task_async) {
 }
 
 } // namespace ice
+
+#endif
