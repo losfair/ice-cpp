@@ -2,6 +2,7 @@
 #define _ICE_H_
 
 #include <iostream>
+#include <fstream>
 #include <thread>
 #include <vector>
 #include <string>
@@ -136,6 +137,26 @@ class Context {
         }
 };
 
+class CustomProperties {
+    private:
+        Resource handle;
+    
+    public:
+        CustomProperties(Resource _handle) {
+            handle = _handle;
+        }
+
+        inline std::string get(const char *k) {
+            const char *v = ice_glue_custom_properties_get(handle, k);
+            if(!v) v = "";
+            return std::string(v);
+        }
+
+        inline void set(const char *k, const char *v) {
+            ice_glue_custom_properties_set(handle, k, v);
+        }
+};
+
 class Response {
     private:
         Resource call_info;
@@ -214,6 +235,10 @@ class Request {
 
         inline Context get_context() {
             return Context(ice_glue_request_borrow_context(handle));
+        }
+
+        inline CustomProperties borrow_custom_properties() {
+            return CustomProperties(ice_glue_request_borrow_custom_properties(handle));
         }
 
         inline const char * get_remote_addr() {
@@ -313,6 +338,26 @@ class Server {
 
         void listen(const char *addr) {
             ice_server_listen(handle, addr);
+        }
+
+        void load_bitcode(const char *name, const u8 *data, u32 len) {
+            bool ret = ice_server_cervus_load_bitcode(handle, name, data, len);
+            if(!ret) {
+                throw std::runtime_error("Bitcode load failed");
+            }
+        }
+
+        void load_bitcode_from_file(const char *name, const char *path) {
+            std::ifstream file(path, std::ios::binary | std::ios::ate);
+            std::streamsize size = file.tellg();
+            file.seekg(0, std::ios::beg);
+
+            std::vector<char> buffer(size);
+            if(file.read(buffer.data(), size)) {
+                load_bitcode(name, (const u8 *) &buffer[0], size);
+            } else {
+                throw std::runtime_error("Unable to read bitcode file");
+            }
         }
 
         void add_endpoint(const char *path, DispatchTarget handler, std::vector<std::string>& flags) {

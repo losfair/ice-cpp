@@ -10,6 +10,9 @@ int main() {
     ice::Server server(NULL);
     server.disable_request_logging();
 
+    server.load_bitcode_from_file("test_module", "test_module.bc");
+    server.load_bitcode_from_file("test_module_2", "test_module_2.bc");
+
     server.route_sync(NULL, [](ice::Request req) {
         return req.create_response().set_status(404).set_body("Not found");
     });
@@ -42,6 +45,11 @@ int main() {
         for(auto& p : cookies) {
             if(p.second) std::cout << p.first << ": " << p.second << std::endl;
         }
+
+        auto cp = req.borrow_custom_properties();
+        auto request_id = cp.get("request_id");
+
+        std::cout << "Request id: " << request_id << std::endl;
 
         return req.create_response().set_body("OK");
     });
