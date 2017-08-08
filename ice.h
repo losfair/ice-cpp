@@ -340,23 +340,20 @@ class Server {
             ice_server_listen(handle, addr);
         }
 
-        void load_bitcode(const char *name, const u8 *data, u32 len) {
-            bool ret = ice_server_cervus_load_bitcode(handle, name, data, len);
-            if(!ret) {
-                throw std::runtime_error("Bitcode load failed");
-            }
+        bool load_bitcode(const char *name, const u8 *data, u32 len) {
+            return ice_server_cervus_load_bitcode(handle, name, data, len);
         }
 
-        void load_bitcode_from_file(const char *name, const char *path) {
+        bool load_bitcode_from_file(const char *name, const char *path) {
             std::ifstream file(path, std::ios::binary | std::ios::ate);
             std::streamsize size = file.tellg();
             file.seekg(0, std::ios::beg);
 
             std::vector<char> buffer(size);
             if(file.read(buffer.data(), size)) {
-                load_bitcode(name, (const u8 *) &buffer[0], size);
+                return load_bitcode(name, (const u8 *) &buffer[0], size);
             } else {
-                throw std::runtime_error("Unable to read bitcode file");
+                return false;
             }
         }
 
