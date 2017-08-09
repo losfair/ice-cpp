@@ -121,6 +121,23 @@ class ResponseStream {
         bool write(const char *s) const {
             return write((const u8 *) s, strlen(s));
         }
+
+        bool write_str(const char *s) const {
+            return write(s);
+        }
+
+        bool write_bytes(const u8 *data, u32 len) const {
+            return write(data, len);
+        }
+
+        bool close() {
+            if(handle) {
+                ice_core_destroy_stream_provider(handle);
+                handle = NULL;
+                return true;
+            }
+            return false;
+        }
 };
 
 class Context {
@@ -179,6 +196,14 @@ class Response {
 
         inline Response& set_body(const std::string& body) {
             return set_body((const u8 *) body.c_str(), body.size());
+        }
+
+        inline Response& set_body_str(const char *body) {
+            return set_body(body);
+        }
+
+        inline Response& set_body_bytes(const u8 *body, u32 len) {
+            return set_body(body, len);
         }
 
         inline Response& set_file(const char *path) {
@@ -319,8 +344,7 @@ class Server {
         std::deque<Task> pending;
         std::string async_endpoint_cb_signature;
 
-    public:
-        Server(uv_loop_t *loop) {
+        void init(uv_loop_t *loop) {
             handle = ice_create_server();
             if(loop) {
                 ev_loop = loop;
@@ -332,6 +356,15 @@ class Server {
 
             ice_server_set_custom_app_data(handle, (void *) this);
             ice_server_set_async_endpoint_cb(handle, dispatch_async_endpoint_cb);
+        }
+
+    public:
+        Server() {
+            init(NULL);
+        }
+
+        Server(uv_loop_t *loop) {
+            init(loop);
         }
 
         ~Server() {}
@@ -395,6 +428,10 @@ class Server {
 
         void route_async(const char *path, DispatchTarget handler) {
             std::vector<std::string> flags;
+            route_async(path, handler, flags);
+        }
+
+        void route_async_with_flags(const char *path, DispatchTarget handler, std::vector<std::string>& flags) {
             route_async(path, handler, flags);
         }
 
