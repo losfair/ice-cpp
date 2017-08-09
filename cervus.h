@@ -16,6 +16,7 @@ typedef void (*ContextDestroyHookFn)(Memory mem, Resource ctx);
 typedef void (*BeforeRequestHookFn)(Memory mem, struct BasicRequestInfo *info);
 typedef void (*RequestHookFn)(Memory mem, Resource req);
 typedef void (*ResponseHookFn)(Memory mem, Resource resp);
+typedef void (*AfterResponseHookFn)(Memory mem, Resource resp, Resource custom_properties);
 
 struct ModuleInitConfig {
     char ok;
@@ -25,6 +26,7 @@ struct ModuleInitConfig {
     BeforeRequestHookFn before_request_hook;
     RequestHookFn request_hook;
     ResponseHookFn response_hook;
+    AfterResponseHookFn after_response_hook;
 };
 
 #ifdef __cplusplus
