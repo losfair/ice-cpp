@@ -4,13 +4,13 @@
 
 void before_request(Memory mem, struct BasicRequestInfo *info) {
     //printf("%p %p\n", mem, info);
-    Resource cp = info -> custom_properties;
-    ice_glue_custom_properties_set(cp, "request_uri", info -> uri);
+    //Resource cp = info -> custom_properties;
+    //ice_glue_custom_properties_set(cp, "request_uri", info -> uri);
 }
 
 void after_response(Memory mem, Resource resp, Resource cp) {
-    const char *uri = ice_glue_custom_properties_get(cp, "request_uri");
-    printf("Ended: %s\n", uri);
+    //const char *uri = ice_glue_custom_properties_get(cp, "request_uri");
+    //printf("Ended: %s\n", uri);
 }
 
 void cervus_module_init(struct ModuleInitConfig *cfg) {

@@ -340,6 +340,7 @@ class Server {
         uv_loop_t *ev_loop;
         uv_async_t task_async;
         std::unordered_map<int, DispatchTarget> dispatch_table;
+        std::unordered_map<int, bool> blocking_endpoints;
         std::mutex pending_mutex;
         std::deque<Task> pending;
         std::string async_endpoint_cb_signature;
@@ -390,7 +391,7 @@ class Server {
             }
         }
 
-        void add_endpoint(const char *path, DispatchTarget handler, std::vector<std::string>& flags) {
+        void add_endpoint(const char *path, DispatchTarget handler, std::vector<std::string>& flags, bool blocking = false) {
             int id = -1;
 
             if(path && path[0]) {
@@ -403,6 +404,7 @@ class Server {
             }
 
             dispatch_table[id] = handler;
+            if(blocking) blocking_endpoints[id] = true;
         }
 
         void add_endpoint(const char *path, DispatchTarget handler) {
@@ -420,6 +422,19 @@ class Server {
         void route_sync(const char *path, SyncDispatchTarget handler) {
             std::vector<std::string> flags;
             route_sync(path, handler, flags);
+        }
+
+        void route_blocking(const char *path, DispatchTarget handler, std::vector<std::string>& flags) {
+            add_endpoint(path, handler, flags, true);
+        }
+
+        void route_blocking(const char *path, DispatchTarget handler) {
+            std::vector<std::string> flags;
+            route_blocking(path, handler, flags);
+        }
+
+        void route_blocking_with_flags(const char *path, DispatchTarget handler, std::vector<std::string>& flags) {
+            route_blocking(path, handler, flags);
         }
 
         void route_async(const char *path, DispatchTarget handler, std::vector<std::string>& flags) {
@@ -480,11 +495,22 @@ class Server {
         }
 
         void async_endpoint_cb(int ep_id, Resource call_info) {
-            pending_mutex.lock();
-            pending.push_back(Task(ep_id, call_info));
-            pending_mutex.unlock();
+            if(blocking_endpoints[ep_id]) {
+                auto target = dispatch_table[ep_id];
+                Request req(call_info);
 
-            uv_async_send(&task_async);
+                if(!target) {
+                    req.create_response().set_status(404).set_body("Invalid endpoint").send();
+                } else {
+                    target(req);
+                }
+            } else {
+                pending_mutex.lock();
+                pending.push_back(Task(ep_id, call_info));
+                pending_mutex.unlock();
+
+                uv_async_send(&task_async);
+            }
         }
 
         void run(const char *addr) {

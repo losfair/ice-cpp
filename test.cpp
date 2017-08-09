@@ -27,6 +27,11 @@ int main() {
         resp.set_body("Hello world! (Async)");
         resp.send();
     });
+    server.route_blocking("/hello_world_blocking", [](ice::Request req) {
+        auto resp = req.create_response();
+        resp.set_body("Hello world! (Blocking)");
+        resp.send();
+    });
     server.route_threaded("/hello_world_threaded", [](ice::Request req) {
         auto resp = req.create_response();
         resp.set_body("Hello world! (Threaded)");
