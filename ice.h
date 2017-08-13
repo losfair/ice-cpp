@@ -77,6 +77,22 @@ struct Task {
     }
 };
 
+class InteropContext {
+    private:
+        Resource handle;
+    
+    public:
+        InteropContext(Resource _handle) {
+            handle = _handle;
+        }
+
+        ~InteropContext() {
+            if(handle) {
+                ice_glue_interop_destroy_context(handle);
+            }
+        }
+};
+
 class ResponseStream {
     private:
         Resource handle;

@@ -1,23 +1,42 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include "cervus.h"
+#include "imports.h"
 
-void before_request(Memory mem, struct BasicRequestInfo *info) {
-    //printf("%p %p\n", mem, info);
-    //Resource cp = info -> custom_properties;
-    //ice_glue_custom_properties_set(cp, "request_uri", info -> uri);
+struct ModuleState {
+    int req_id;
+};
+
+void before_request(Resource hook_ctx) {
+    //cervus_log(7, "before_request called");
+    struct ModuleState *state = get_module_mem();
+    state -> req_id++;
+    struct BasicRequestInfo *bri = (struct BasicRequestInfo *) downcast_hook_context(hook_ctx, "basic_request_info");
+    bri -> response = ice_glue_create_response();
+    //ice_glue_response_set_status(bri -> response, 403);
+    //printf("Request id: %d\n", state -> req_id);
 }
 
-void after_response(Memory mem, Resource resp, Resource cp) {
-    //const char *uri = ice_glue_custom_properties_get(cp, "request_uri");
-    //printf("Ended: %s\n", uri);
+void after_response(Resource hook_ctx) {
+    //cervus_log(7, "after_response called");
+    Resource resp = downcast_hook_context(hook_ctx, "glue_response");
 }
 
-void cervus_module_init(struct ModuleInitConfig *cfg) {
-    cfg -> ok = 1;
-    cfg -> before_request_hook = before_request;
-    cfg -> after_response_hook = after_response;
-    cervus_log("Test module 2 loaded");
-    Resource m = malloc(1048576);
-    free(m);
+void interop_ping(Resource hook_ctx) {
+    Resource interop_ctx = downcast_hook_context(hook_ctx, "interop_context");
+    const char *v = ice_glue_interop_get_tx_field(interop_ctx, "value");
+    if(!v || strcmp(v, "Ping") != 0) {
+        return;
+    }
+    ice_glue_interop_set_rx_field(interop_ctx, "value", "Pong");
+}
+
+void module_init() {
+    void * addr = reset_module_mem(sizeof(struct ModuleState));
+    printf("%p\n", addr);
+    //add_hook("before_request", before_request);
+    add_hook("after_response", after_response);
+    add_hook("interop_ping", interop_ping);
+    cervus_log(7, "Test module initialized");
 }

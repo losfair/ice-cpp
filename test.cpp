@@ -10,11 +10,27 @@ int main() {
     ice::Server server(NULL);
     server.disable_request_logging();
 
-    server.load_bitcode_from_file("test_module", "test_module.bc");
+    //server.load_bitcode_from_file("test_module", "test_module.bc");
     server.load_bitcode_from_file("test_module_2", "test_module_2.bc");
 
     server.route_sync(NULL, [](ice::Request req) {
         return req.create_response().set_status(404).set_body("Not found");
+    });
+
+    server.route_sync("/module_ping", [](ice::Request req) {
+        Resource interop_ctx = ice_glue_interop_create_context_with_name("ping");
+
+        ice_glue_interop_set_tx_field(interop_ctx, "value", "Ping");
+        ice_glue_interop_run_hooks(interop_ctx, req.get_context()._get_handle());
+
+        const char *_ret = ice_glue_interop_get_rx_field(interop_ctx, "value");
+        if(!_ret) _ret = "";
+
+        std::string ret(_ret);
+
+        ice_glue_interop_destroy_context(interop_ctx);
+
+        return req.create_response().set_body(ret.c_str());
     });
 
     server.route_sync("/hello_world", [](ice::Request req) {

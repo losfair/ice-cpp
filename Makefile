@@ -7,5 +7,4 @@ clean:
 	rm test *.o
 
 test_module:
-	clang -std=c++11 -emit-llvm -o test_module.bc -c test_module.cpp
 	clang -emit-llvm -o test_module_2.bc -c test_module_2.c

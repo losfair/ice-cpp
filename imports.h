@@ -68,6 +68,16 @@ Resource ice_glue_response_stream(Resource t, Resource ctx);
 void ice_glue_custom_properties_set(Resource cp, const char *k, const char *v);
 const char * ice_glue_custom_properties_get(Resource cp, const char *k);
 
+Resource ice_glue_interop_create_context_with_name(const char *name);
+void ice_glue_interop_destroy_context(Resource ctx);
+void ice_glue_interop_run_hooks(Resource ctx, Resource app_ctx);
+void ice_glue_interop_set_tx_field(Resource ctx, const char *k, const char *v);
+void ice_glue_interop_set_rx_field(Resource ctx, const char *k, const char *v);
+const char * ice_glue_interop_get_tx_field(Resource ctx, const char *k);
+const char * ice_glue_interop_get_rx_field(Resource ctx, const char *k);
+const u8 * ice_glue_interop_read_tx(Resource ctx);
+const u8 * ice_glue_interop_read_rx(Resource ctx);
+
 bool ice_core_fire_callback(Resource call_info, Resource resp);
 Resource ice_core_borrow_request_from_call_info(Resource call_info);
 Resource ice_core_get_custom_app_data_from_call_info(Resource call_info);
